@@ -4,6 +4,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import StaleElementReferenceException
 import config
 
 pytestmark = pytest.mark.ui
@@ -20,7 +21,6 @@ class TestUI:
             wait = WebDriverWait(browser, 10)
 
         with allure.step("Первое нажатие на кнопку 'Войти' (открытие формы)"):
-            # Ждем появления кнопки на странице
             login_btns = wait.until(EC.presence_of_all_elements_located
                                     ((By.XPATH, "//*[contains(text(), 'Войти')]")))
             login_btns[0].click()
@@ -42,17 +42,16 @@ class TestUI:
             )
             submit_btns[-1].click()
 
-        with allure.step("Проверка перехода на страницу команды (/team/)"):
-            # Убрана лишняя запятая после wait.until
+        with (allure.step("Проверка перехода на страницу команды (/team/)")):
             assert wait.until(
-                EC.url_contains("/team/")), f"Ожидался редирект на /team/, но текущий URL: {browser.current_url}"
+                EC.url_contains("/team/"))
+            f"Ожидался редирект на /team/, но текущий URL: {browser.current_url}"
 
     @allure.story("Навигация")
     @allure.title("Проверка отображения бокового меню на дашборде")
     def test_sidebar_visible(self, logged_in_browser) -> None:
         wait = WebDriverWait(logged_in_browser, 10)
         with allure.step("Проверка видимости элементов меню"):
-            # Убрана лишняя закрывающая скобка в конце
             projects_menu = wait.until(EC.visibility_of_element_located
                                        ((By.XPATH, "//*[contains(text(), 'Проекты')]")))
             assert projects_menu.is_displayed(), "Меню 'Проекты' не отображается на странице"
@@ -63,7 +62,8 @@ class TestUI:
         wait = WebDriverWait(logged_in_browser, 10)
 
         with allure.step("Нажатие кнопки 'Добавить проект'"):
-            create_btn = wait.until(EC.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'Добавить проект')]")))
+            create_btn = wait.until(EC.element_to_be_clickable
+                                    ((By.XPATH, "//*[contains(text(), 'Добавить проект')]")))
             create_btn.click()
 
         with allure.step("Выбор типа проекта 'Проект с задачами'"):
@@ -72,21 +72,21 @@ class TestUI:
             project_type_btn.click()
 
         with allure.step("Ввод названия проекта"):
-            # Ищем поле по его атрибуту placeholder
             name_input = wait.until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Введите название проекта…']")))
+                EC.presence_of_element_located
+                ((By.CSS_SELECTOR, "input[placeholder='Введите название проекта…']")))
             name_input.send_keys("UI Autotest Project")
 
         with allure.step("Сохранение проекта"):
-            # Кликаем по кнопке "Добавить проект с задачами"
             save_btn = wait.until(
-                EC.element_to_be_clickable((By.XPATH, "//*[contains(text(), 'Добавить проект с задачами')]")))
+                EC.element_to_be_clickable
+                ((By.XPATH, "//*[contains(text(), 'Добавить проект с задачами')]")))
             save_btn.click()
 
         with allure.step("Проверка, что проект появился"):
-            # Ждем, пока на странице появится карточка с нашим названием
             assert wait.until(
-                EC.visibility_of_element_located((By.XPATH, "//*[contains(text(), 'UI Autotest Project')]"))), \
+                EC.visibility_of_element_located
+                ((By.XPATH, "//*[contains(text(), 'UI Autotest Project')]"))), \
                 "Созданный проект не отображается в списке"
 
     @allure.story("Поиск")
@@ -95,28 +95,34 @@ class TestUI:
         wait = WebDriverWait(logged_in_browser, 10)
 
         with allure.step("Ввод запроса в строку поиска"):
-            # 1. Ждем, пока элемент появится в DOM
+            # Находим элемент в DOM (даже если он пока не кликабелен)
             search_input = wait.until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "input[placeholder='Поиск']"))
             )
 
-            # 2. Принудительно устанавливаем значение через JavaScript (игнорирует блокировки ввода)
-            logged_in_browser.execute_script("arguments[0].value = 'QA Test Task Updated';", search_input)
-
-            # 3. Вызываем событие 'input' или 'change', чтобы React/Vue приложение увидело изменение
-            logged_in_browser.execute_script("arguments[0].dispatchEvent(new Event('input', { bubbles: true }));",
-                                             search_input)
-
-            # 4. Отправляем Enter через JavaScript, чтобы запустить поиск
+            # Принудительно вводим текст через JavaScript, чтобы обойти любые блокировки
             logged_in_browser.execute_script(
-                "arguments[0].dispatchEvent(new KeyboardEvent('keydown', {'key': 'Enter', 'bubbles': true}));",
-                search_input)
+                "arguments[0].value = 'QA Test Task Updated';",
+                search_input
+            )
+            # Вызываем событие 'input', чтобы Vue/React обновил состояние
+            logged_in_browser.execute_script(
+                "arguments[0].dispatchEvent(new Event('input', { bubbles: true }));",
+                search_input
+            )
+            # Отправляем Enter через JavaScript
+            logged_in_browser.execute_script(
+                "arguments[0].dispatchEvent(new KeyboardEvent('keydown',"
+                " {'key': 'Enter', 'bubbles': true}));",
+                search_input
+            )
 
         with allure.step("Проверка появления результатов"):
-            results = wait.until(
-                EC.presence_of_all_elements_located((By.XPATH, "//*[contains(text(), 'QA Test Task Updated')]"))
+            # Ждем, пока на странице появится текст задачи
+            wait.until(
+                EC.presence_of_element_located
+                ((By.XPATH, "//*[contains(text(), 'QA Test Task Updated')]"))
             )
-            assert len(results) > 0, "Поиск не вернул результатов"
 
     @allure.story("Интерфейс")
     @allure.title("Проверка переключения темы")
@@ -124,41 +130,42 @@ class TestUI:
         wait = WebDriverWait(logged_in_browser, 10)
 
         with allure.step("Открытие меню профиля"):
-            profile_btn = wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Эл')]")))
+            # Ищем контейнер аватарки
+            profile_btn = wait.until(EC.presence_of_element_located(
+                (By.XPATH, "//div[contains(@class, 'hint__cnt')]")
+            ))
+            # Клик через JS
             logged_in_browser.execute_script("arguments[0].click();", profile_btn)
 
         with allure.step("Переход в настройки"):
             settings_btn = wait.until(EC.presence_of_element_located(
-                (By.XPATH, "//*[contains(text(), 'Настройки') or contains(text(), 'Профиль')]")))
+                (By.XPATH, "//*[contains(text(), 'Мой профиль') or contains(text(), 'Настройки')]")
+            ))
+            # Клик через JS
             logged_in_browser.execute_script("arguments[0].click();", settings_btn)
 
-        with allure.step("Прокрутка до раздела 'Внешний вид системы'"):
-            # Ждем появления заголовка
-            wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Внешний вид системы')]")))
-            # Прокручиваем вниз
-            logged_in_browser.execute_script("window.scrollBy(0, 300);")
-            import time
-            time.sleep(1)
+        with (allure.step("Прокрутка до раздела 'Внешний вид системы'")):
+            title = wait.until(
+                EC.presence_of_element_located
+                ((By.XPATH, "//*[contains(text(), 'Внешний вид системы')]"))
+            )
+            logged_in_browser.execute_script(
+                "arguments[0].scrollIntoView({block: 'center'});", title)
 
         with allure.step("Выбор темной темы"):
-            # Ищем div, внутри которого лежит SVG с цветом #2B3541
-            # Используем синтаксис name() для SVG
-            dark_theme_block = wait.until(
-                EC.presence_of_element_located((By.XPATH, "//div[.//*[name()='rect' and @fill='#2B3541']]"))
-            )
-
-            # Кликаем по этому div через JS
+            # Ищем блок темной темы по цвету заливки rect
+            dark_theme_block = wait.until(EC.presence_of_element_located(
+                (By.XPATH, "//div[.//*[name()='rect' and @fill='#2B3541']]")
+            ))
+            # Клик через JS (избегаем проблем с перекрытием и StaleElement)
             logged_in_browser.execute_script("arguments[0].click();", dark_theme_block)
 
         with allure.step("Проверка применения темной темы"):
-            time.sleep(2)  # Ждем, пока стили применятся
-
-            # Проверяем, что у блока с темной темой появился класс, обозначающий выбор
-            # (Например, outline-accent-old, как у светлой темы в вашем HTML)
-            # Или проверяем цвет фона body
+            # Ждем, пока фон страницы перестанет быть белым
+            wait.until(
+                lambda d: d.find_element(By.TAG_NAME, "body").value_of_css_property(
+                    "background-color") != "rgba(255, 255, 255, 1)"
+            )
             body = logged_in_browser.find_element(By.TAG_NAME, "body")
             bg_color = body.value_of_css_property("background-color")
-
-            # Темный фон обычно имеет очень темный цвет (близкий к 0)
-            # Если фон не белый - тема переключилась
-            assert bg_color != "rgba(255, 255, 255, 1)", f"Тема не переключилась, фон остался белым: {bg_color}"
+            assert bg_color != "rgba(255, 255, 255, 1)", f"Тема не переключилась: {bg_color}"

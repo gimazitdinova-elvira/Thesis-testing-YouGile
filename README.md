@@ -23,6 +23,12 @@
 
 ## 🚀 Установка и запуск
 
+1. Клонируйте репозиторий и перейдите в папку проекта.
+2. Установите зависимости:
+   ```bash
+   pip install -r requirements.txt
+
+
 ### 1. Клонирование репозитория
 ```bash
 git clone <https://github.com/gimazitdinova-elvira/Thesis-testing-YouGile.git>
